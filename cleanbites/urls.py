@@ -17,7 +17,11 @@ Including another URLconf
 from django.contrib import admin
 from django.urls import path, include
 
+admin.site.site_header = 'Cleanbites Admin'
+admin.site.index_title = 'Admin'
 urlpatterns = [
     path('admin/', admin.site.urls),
-    path('cleanbites_api/', include('cleanbites_api.urls'))
+    path('cleanbites_api/', include('cleanbites_api.urls')),
+    path('auth/', include('djoser.urls')),
+    path('auth/', include('djoser.urls.jwt'))
 ]
