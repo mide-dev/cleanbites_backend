@@ -1,6 +1,13 @@
 from django.urls import path
+# from rest_framework.routers import SimpleRouter
 from . import views
 
-# URLConf
-urlpatterns = [path("places/", views.get_places),
-               path('places/<int:id>/', views.place_detail)]
+# router = SimpleRouter()
+# router.register('places')
+urlpatterns = [
+    # URL pattern for getting a list of places
+    path('places/', views.PlacesView.as_view()),
+
+    # URL pattern for fetching a place by ID
+    path('places/<int:id>/', views.PlaceDetailView.as_view()),
+]
