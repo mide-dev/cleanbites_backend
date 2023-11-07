@@ -1,8 +1,20 @@
 from django.db import models
 from django.contrib.auth.models import AbstractUser
+from django.contrib.postgres.indexes import GinIndex
 from django.conf import settings
+from .utils import UserManager
 
-# Create your models here.
+
+class User(AbstractUser):
+    username = None
+    email = models.EmailField(unique=True)
+
+    USERNAME_FIELD = 'email'
+
+    REQUIRED_FIELDS = ['password', 'first_name', 'last_name']
+    objects = UserManager()
+
+
 class PlaceDetail(models.Model):
     business_name = models.CharField(max_length=255)
     category_desc = models.TextField()
@@ -16,17 +28,12 @@ class PlaceDetail(models.Model):
     latitude = models.FloatField()
     longitude = models.FloatField()
 
+    class Meta:
+        indexes = [GinIndex(name='searchPlaceIdx', fields=['category_desc', 'business_name', 'city'])]
+
     def __str__(self) -> str:
         return self.business_name
-    
-    class Meta:
-        ordering = ['business_name']
 
-
-class User(AbstractUser):
-    # first_name = models.CharField(max_length=70)
-    # last_name = models.CharField(max_length=70)
-    email = models.EmailField(unique=True)
 
 
 class UserFavorite(models.Model):
@@ -39,5 +46,5 @@ class PlaceReview(models.Model):
     review = models.TextField()
     last_update = models.DateTimeField(auto_now=True)
     place_id = models.ForeignKey(PlaceDetail, on_delete=models.CASCADE)
-    user_id = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True)
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True)
 

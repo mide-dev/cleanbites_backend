@@ -1,18 +1,36 @@
 from rest_framework import serializers
-from djoser.serializers import UserCreateSerializer as BaseUserCreateSerializer
-from .models import PlaceDetail
-from .fetch_external_api.place_photo import get_place_photos_reference
+from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
+from djoser.serializers import UserCreateSerializer as BaseUserCreateSerializer, UserSerializer as BaseUserSerializer
+from .models import PlaceDetail, PlaceReview, UserFavorite, User
 
-
+# create user serializer
 class UserCreateSerializer(BaseUserCreateSerializer):
     class Meta(BaseUserCreateSerializer.Meta):
-        fields=['id', 'username', 'password', 'email', 'first_name', 'last_name']
+        fields=['id', 'password', 'email', 'first_name', 'last_name']
 
+# user serializer
+class UserSerializer(BaseUserSerializer):
+    class Meta(BaseUserSerializer.Meta):
+        fields = ['id', 'password', 'email', 'first_name', 'last_name']
 
+# add custom field to access token payload
+class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
+    @classmethod
+    def get_token(cls, user):
+        token = super().get_token(user)
+        # custom fields
+        token["firstname"] = user.first_name
+        token["lastname"] = user.last_name
+        token["email"] = user.email
+
+        return token
+
+# places serializer
 class PlacesSerializer(serializers.ModelSerializer):
     class Meta:
         model = PlaceDetail
         fields = (
+            'id',
             'business_name',
             'hygiene_score',
             'google_review_score',
@@ -23,19 +41,22 @@ class PlacesSerializer(serializers.ModelSerializer):
             'post_code',
         )
 
-
+# place detail serializer
 class PlaceDetailSerializer(serializers.ModelSerializer):
     class Meta:
         model = PlaceDetail
-        fields = (
-            'business_name',
-            'hygiene_score',
-            'google_review_score',
-            'google_review_count',
-            'google_place_id',
-            'street',
-            'city',
-            'post_code',
-            'latitude',
-            'longitude',
-        )
+        fields = ('__all__')
+
+# place review serializer
+class PlaceReviewSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = PlaceReview
+        fields = ('__all__')
+
+# user favorite serializer
+class UserFavoriteSerializer(serializers.ModelSerializer):
+    place = PlacesSerializer()
+
+    class Meta:
+        model = UserFavorite
+        fields = ['place']

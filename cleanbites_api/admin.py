@@ -6,12 +6,13 @@ from . import models
 
 @admin.register(models.User)
 class UserAdmin(BaseUserAdmin):
+    ordering = ('email', ('first_name'))
     add_fieldsets = (
         (
             None,
             {
-                "classes": ("wide",),
-                "fields": ("username", "password1", "password2", "email", "first_name", "last_name"),
+                "classes": ("wide"),
+                "fields": ("password1", "password2", "email", "first_name", "last_name"),
             },
         ),
     )

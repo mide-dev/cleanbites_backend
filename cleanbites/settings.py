@@ -12,6 +12,7 @@ https://docs.djangoproject.com/en/4.2/ref/settings/
 
 from pathlib import Path
 import environ
+from datetime import timedelta
 # Initialise environment variables
 env = environ.Env()
 environ.Env.read_env()
@@ -41,6 +42,7 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'django.contrib.postgres',
     'rest_framework',
     'djoser',
     'cleanbites_api'
@@ -137,9 +139,14 @@ REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
         'rest_framework_simplejwt.authentication.JWTAuthentication',
     ),
+    'PAGE_SIZE': 25
 }
 
 SIMPLE_JWT = {
+    "ACCESS_TOKEN_LIFETIME": timedelta(days=1),
+    "REFRESH_TOKEN_LIFETIME": timedelta(days=90),
+    "ROTATE_REFRESH_TOKENS": True,
+    "BLACKLIST_AFTER_ROTATION": True,
    'AUTH_HEADER_TYPES': ('JWT',),
 }
 
@@ -147,6 +154,8 @@ AUTH_USER_MODEL = 'cleanbites_api.User'
 
 DJOSER = {
     'SERIALIZERS':{
-        'user_create':'cleanbites_api.serializers.UserCreateSerializer'
+        'user_create':'cleanbites_api.serializers.UserCreateSerializer',
+        'current_user':'cleanbites_api.serializers.UserSerializer'
     }
 }
+

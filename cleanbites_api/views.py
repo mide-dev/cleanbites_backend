@@ -1,65 +1,201 @@
 from django.shortcuts import get_object_or_404
-from django.http import HttpResponse
-from rest_framework.decorators import api_view
+from django.contrib.postgres.search import SearchVector, SearchQuery, TrigramSimilarity
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.views import APIView
-from .models import PlaceDetail
-from .serializers import PlacesSerializer, PlaceDetailSerializer
-from .fetch_external_api.place_photo import get_place_photos_reference
-from concurrent.futures import ThreadPoolExecutor
+from rest_framework.permissions import IsAuthenticated, AllowAny
+from rest_framework_simplejwt.views import TokenObtainPairView
+from .models import PlaceDetail, User, UserFavorite, PlaceReview
+from .serializers import PlacesSerializer, PlaceDetailSerializer, UserCreateSerializer, UserSerializer, CustomTokenObtainPairSerializer, PlaceReviewSerializer, UserFavoriteSerializer
+from .permissions import IsAccountOwner
+from .fetch_external_api.places_api import enrich_place_detail, get_place_reviews
 
 import environ
-# Initialise environment variables
+
+# Initialize environment variables
 env = environ.Env()
 environ.Env.read_env()
+google_api_key = env("GOOGLE_API_KEY")
 
-# class UserView(CreateModelMixin, )
+# USERS VIEWS
+class UserView(APIView):
+    permission_classes = [IsAuthenticated, IsAccountOwner]
 
+    def get(self, request, id):
+        user = get_object_or_404(User, pk=id)
+        serializer = UserCreateSerializer(user)
+        return Response(serializer.data)
+
+    def put(self, request, id):
+        user = get_object_or_404(User, pk=id)
+        serializer = UserSerializer(user, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    def delete(self, request, id):
+        user = get_object_or_404(User, pk=id)
+        user.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+class CustomTokenObtainPairView(TokenObtainPairView):
+    serializer_class = CustomTokenObtainPairSerializer
+
+# PLACE VIEWS
 class PlacesView(APIView):
+    pagination_class = PageNumberPagination
+
     def get(self, request):
-        queryset = PlaceDetail.objects.all()[:3]
-        # serialize queryset    
-        serializer = PlacesSerializer(queryset, many=True)
-        # store serialized data as list
-        serialized_data = list(serializer.data)
+        queryset = PlaceDetail.objects.all()
+        paginator = self.pagination_class()
+        page = paginator.paginate_queryset(queryset, request)
+        serializer = PlacesSerializer(page, many=True)
+        return paginator.get_paginated_response(serializer.data)
 
-        '''
-        fetch photo reference of each place from google
-        and add to json payload
-        '''
-        # declare constants
-        api_key = env("GOOGLE_API_KEY")
-        max_photos = 3
-        # extract place_ids of fetched places and store in list
-        place_ids = [data['google_place_id'] for data in serialized_data]
+class PlaceSearchView(APIView):
+    pagination_class = PageNumberPagination
 
-        def fetch_photos(place_id):
-            try: # try to fetch photo reference of a place
-                result = get_place_photos_reference(api_key, place_id, max_photos)
-                return result
-            except KeyError: # if no photo available, return Null
-                return None
+    def get(self, request, search_param):
+        vector = SearchVector("category_desc", 'business_name', 'city')
+        query = SearchQuery(search_param)
+        queryString = search_param
+        queryset = PlaceDetail.objects.annotate(search=vector).filter(search=query)
 
-        # fetch multiple photo ref at once to speed up performance
-        with ThreadPoolExecutor() as executor:
-            place_photos = list(executor.map(fetch_photos, place_ids))
+        if len(queryset) < 1:
+            queryset = PlaceDetail.objects.annotate(similarity=TrigramSimilarity("business_name", queryString)).filter(similarity__gt=0.3).order_by("-similarity")
 
-        # zip the results into a tuple and append photo ref to serialized data
-        for data, photos in zip(serialized_data, place_photos):
-            data['place_photo_reference'] = photos
+        if len(queryset) < 1:
+            queryset = PlaceDetail.objects.annotate(similarity=TrigramSimilarity("category_desc", queryString)).filter(similarity__gt=0.3).order_by("-similarity")
 
-        return Response(serialized_data)
+        paginator = self.pagination_class()
+        page = paginator.paginate_queryset(queryset, request)
+        serializer = PlacesSerializer(page, many=True)
+
+        if len(serializer.data) < 1:
+            return Response({'message': "No results available for the search string"}, status=status.HTTP_404_NOT_FOUND)
+        return paginator.get_paginated_response(serializer.data)
 
 
 class PlaceDetailView(APIView):
-    def get(self, request, id):
-        place = get_object_or_404(PlaceDetail, pk=id)
-        serializer = PlaceDetailSerializer(place)
-        return Response(serializer.data)
-    
+    def get(self, request, place_id):
+        place_detail = get_object_or_404(PlaceDetail, pk=place_id)
+        serialized = PlaceDetailSerializer(place_detail)
+        serialized_data = serialized.data
+        google_place_id = serialized_data['google_place_id']
+        enriched_data = enrich_place_detail(api_key=google_api_key, place_id=google_place_id)
+        serialized_data['google_enriched_data'] = enriched_data
+        return Response(serialized_data)
 
-@api_view()
-def place_search(request):
-    return Response('ok')
+# PLACE FAVORITES VIEWS
+class UserFavoriteListView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, user_id):
+        user_favorites = UserFavorite.objects.filter(user=user_id).prefetch_related('place')
+        serializer = UserFavoriteSerializer(user_favorites, many=True)
+        return Response(serializer.data)
+
+class AddFavoritesView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        user = request.user
+        place_id = request.data.get('place_id')
+        place = get_object_or_404(PlaceDetail, pk=place_id)
+        user_favorite, created = UserFavorite.objects.get_or_create(user=user, place=place)
+        if created:
+            return Response({'message': 'Place added to favorites'}, status=status.HTTP_201_CREATED)
+        else:
+            return Response({'message': 'Place is already in favorites'}, status=status.HTTP_200_OK)
+
+class RemoveFavoriteView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def delete(self, request, place_id):
+        user = request.user
+        place = get_object_or_404(PlaceDetail, pk=place_id)
+        user_favorite = UserFavorite.objects.filter(user=user, place=place).first()
+        if user_favorite:
+            user_favorite.delete()
+            return Response({'message': 'Place removed from favorites'}, status=status.HTTP_200_OK)
+        else:
+            return Response({'message': 'Place is not in favorites'}, status=status.HTTP_200_OK)
+
+# REVIEWS VIEWS
+class PlaceReviewsListView(APIView):
+    permission_classes = [AllowAny]
+
+    def get(self, request, place_id):
+        reviews = PlaceReview.objects.select_related('user').filter(place_id=place_id)
+        serialized_reviews = []
+
+        for review in reviews:
+            serialized_review = PlaceReviewSerializer(review).data
+            user = review.user
+            serialized_review['user_first_name'] = user.first_name
+            serialized_review['user_last_name'] = user.last_name
+            serialized_reviews.append(serialized_review)
+
+        place_detail = PlaceDetail.objects.values('google_place_id').get(pk=place_id)
+        google_place_id = place_detail['google_place_id']
+
+        serialized_data = {'cleanbites_reviews': serialized_reviews}
+
+        if len(serialized_data) >= 5:
+            return Response(serialized_data)
+
+        elif len(serialized_data) >= 1:
+            google_reviews = get_place_reviews(api_key=google_api_key, place_id=google_place_id)
+            serialized_data['google_reviews'] = google_reviews
+            return Response(serialized_data)
+        else:
+            google_reviews = get_place_reviews(api_key=google_api_key, place_id=google_place_id)
+            return Response(google_reviews)
+
+class UserReviewsListView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, user_id):
+        reviews = PlaceReview.objects.filter(user_id=user_id)
+        serializer = PlaceReviewSerializer(reviews, many=True)
+        return Response(serializer.data)
+
+class CreateReviewView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        user = request.user
+        place_id = request.data.get('place_id')
+        place = get_object_or_404(PlaceDetail, pk=place_id)
+        review_text = request.data.get('review_text')
+        rating = request.data.get('rating')
+
+        review = PlaceReview.objects.create(user=user, place_id=place, review=review_text, rating=rating)
+        serializer = PlaceReviewSerializer(review)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+class EditOrDeleteReviewView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def put(self, request, review_id):
+        review = get_object_or_404(PlaceReview, pk=review_id)
+        if review.user == request.user:
+            review_text = request.data.get('review_text')
+            rating = request.data.get('rating')
+            review.review = review_text
+            review.rating = rating
+            review.save()
+            serializer = PlaceReviewSerializer(review)
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        else:
+            return Response({'message': 'You are not allowed to edit this review'}, status=status.HTTP_403_FORBIDDEN)
+
+    def delete(self, request, review_id):
+        review = get_object_or_404(PlaceReview, pk=review_id)
+        if review.user == request.user:
+            review.delete()
+            return Response({'message': 'Review deleted'}, status=status.HTTP_200_OK)
+        else:
+            return Response({'message': 'You are not allowed to delete this review'}, status=status.HTTP_403_FORBIDDEN)
