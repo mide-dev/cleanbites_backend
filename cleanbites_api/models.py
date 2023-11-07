@@ -35,6 +35,12 @@ class PlaceDetail(models.Model):
         return self.business_name
 
 
+class Category(models.Model):
+    name = models.TextField(unique=True)
+
+    def __str__(self):
+        return self.name
+    
 
 class UserFavorite(models.Model):
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
