@@ -6,10 +6,10 @@ from rest_framework.pagination import PageNumberPagination
 from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework_simplejwt.views import TokenObtainPairView
-from .models import PlaceDetail, User, UserFavorite, PlaceReview
-from .serializers import PlacesSerializer, PlaceDetailSerializer, UserCreateSerializer, UserSerializer, CustomTokenObtainPairSerializer, PlaceReviewSerializer, UserFavoriteSerializer
+from .models import PlaceDetail, User, UserFavorite, PlaceReview, Category
+from .serializers import PlacesSerializer, PlaceDetailSerializer, UserCreateSerializer, UserSerializer, CustomTokenObtainPairSerializer, PlaceReviewSerializer, UserFavoriteSerializer, CategorySerializer
 from .permissions import IsAccountOwner
-from .fetch_external_api.places_api import enrich_place_detail, get_place_reviews
+from .fetch_external_api.places_api import enrich_place_detail, get_place_reviews, get_photo_url
 
 import environ
 
@@ -48,16 +48,20 @@ class PlacesView(APIView):
     pagination_class = PageNumberPagination
 
     def get(self, request):
-        queryset = PlaceDetail.objects.all()
+        queryset = PlaceDetail.objects.all().order_by('?')
         paginator = self.pagination_class()
         page = paginator.paginate_queryset(queryset, request)
         serializer = PlacesSerializer(page, many=True)
-        return paginator.get_paginated_response(serializer.data)
+        serialized_data = serializer.data
+        result = get_photo_url(serialized_data=serialized_data, google_api_key=google_api_key)
+        
+        return paginator.get_paginated_response(result)
 
 class PlaceSearchView(APIView):
     pagination_class = PageNumberPagination
 
-    def get(self, request, search_param):
+    def get(self, request):
+        search_param = request.GET.get('query')
         vector = SearchVector("category_desc", 'business_name', 'city')
         query = SearchQuery(search_param)
         queryString = search_param
@@ -78,6 +82,25 @@ class PlaceSearchView(APIView):
         return paginator.get_paginated_response(serializer.data)
 
 
+class PlaceAutocompleteView(APIView):
+    def get(self, request):
+
+        search_string = request.GET.get('query')
+        
+        categoryQueryset = Category.objects.annotate(similarity=TrigramSimilarity("name", search_string)).filter(similarity__gt=0.2).order_by("-similarity")[:5]
+        PlaceQueryset = PlaceDetail.objects.annotate(similarity=TrigramSimilarity("business_name", search_string)).filter(similarity__gt=0.1).order_by("-similarity")[:5]
+
+        categorySerializer = CategorySerializer(categoryQueryset, many=True)
+        placeSerializer = PlacesSerializer(PlaceQueryset, many=True)
+
+        serialized_data = {
+            'categoriesAutocomplete': categorySerializer.data,
+            'placeAutocomplete': placeSerializer.data,
+        }
+
+        return Response(serialized_data)
+
+
 class PlaceDetailView(APIView):
     def get(self, request, place_id):
         place_detail = get_object_or_404(PlaceDetail, pk=place_id)
@@ -87,6 +110,20 @@ class PlaceDetailView(APIView):
         enriched_data = enrich_place_detail(api_key=google_api_key, place_id=google_place_id)
         serialized_data['google_enriched_data'] = enriched_data
         return Response(serialized_data)
+    
+
+class TopPlacesView(APIView):
+    pagination_class = PageNumberPagination
+
+    def get(self, request):
+        # apply filter
+        queryset = PlaceDetail.objects.filter(hygiene_score__gt=4).filter(google_review_score__gt=4).filter(google_review_count__gt=100)
+        # paginate & Serialize the results
+        paginator = self.pagination_class()
+        page = paginator.paginate_queryset(queryset, request)
+        serializer = PlacesSerializer(page, many=True)
+        return paginator.get_paginated_response(serializer.data)
+    
 
 # PLACE FAVORITES VIEWS
 class UserFavoriteListView(APIView):
