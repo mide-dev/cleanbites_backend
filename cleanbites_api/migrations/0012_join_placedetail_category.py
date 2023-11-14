@@ -1,5 +1,4 @@
 from django.db import migrations, models
-# import cleanbites_api
 
 class Migration(migrations.Migration):
 
