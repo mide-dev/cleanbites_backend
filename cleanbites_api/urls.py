@@ -16,8 +16,10 @@ urlpatterns = [
     
     # PLACES
     path('places/', views.PlacesView.as_view()),
-    path('places/search/<str:search_param>', views.PlaceSearchView.as_view()),
+    path('places/search/', views.PlaceSearchView.as_view()),
     path('places/<int:place_id>/', views.PlaceDetailView.as_view()),
+    path('places/autocomplete/', views.PlaceAutocompleteView.as_view()),
+    path('places/top/', views.TopPlacesView.as_view()),
     
     # USER FAVORITES
     path('users/<int:user_id>/favorites/', views.UserFavoriteListView.as_view()),
