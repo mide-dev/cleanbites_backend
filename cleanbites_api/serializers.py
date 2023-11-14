@@ -1,7 +1,7 @@
 from rest_framework import serializers
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from djoser.serializers import UserCreateSerializer as BaseUserCreateSerializer, UserSerializer as BaseUserSerializer
-from .models import PlaceDetail, PlaceReview, UserFavorite, User
+from .models import PlaceDetail, PlaceReview, UserFavorite, User, Category
 
 # create user serializer
 class UserCreateSerializer(BaseUserCreateSerializer):
@@ -46,6 +46,11 @@ class PlaceDetailSerializer(serializers.ModelSerializer):
     class Meta:
         model = PlaceDetail
         fields = ('__all__')
+
+class CategorySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Category
+        fields = ('name',)
 
 # place review serializer
 class PlaceReviewSerializer(serializers.ModelSerializer):
