@@ -41,6 +41,9 @@ class Category(models.Model):
     def __str__(self):
         return self.name
     
+    class Meta:
+        indexes = [GinIndex(name='categoryIdx', fields=['name'])]
+    
 
 class UserFavorite(models.Model):
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
