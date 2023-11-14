@@ -7,7 +7,7 @@ def get_place_photos_reference(api_key, place_id, max_photos=5):
     # set api key
     gmaps = googlemaps.Client(key=api_key)
     # parameter(s) to fetch from google api
-    required_fields = ['name','photo']
+    required_fields = ['photo']
     # call the api
     get_photo_reference = gmaps.place(place_id=place_id, fields=required_fields)
     # define list to append fetch results
@@ -17,11 +17,11 @@ def get_place_photos_reference(api_key, place_id, max_photos=5):
         if idx >= max_photos:
             break
         place_photo_reference.append(img["photo_reference"])
+    
     return place_photo_reference
 
-
 # 
-def add_photo_reference_to_data(serialized_data, google_api_key):
+def get_photo_url(serialized_data, google_api_key, maxwidth = 600):
     # fetch photo reference of each place from google
     # and add to json payload
     # '''
@@ -29,19 +29,24 @@ def add_photo_reference_to_data(serialized_data, google_api_key):
     place_ids = [data['google_place_id'] for data in serialized_data]
     def fetch_photos(place_id):
         # constant
-        max_photos = 3
+        base_url = "https://maps.googleapis.com/maps/api/place/photo"
         try:
-            result = get_place_photos_reference(google_api_key, place_id, max_photos)
+            img_ref = get_place_photos_reference(google_api_key, place_id, max_photos=2)
+            photo_url = []
+            for img in img_ref:
+                photo_url.append(f"{base_url}?maxwidth={maxwidth}&photoreference={img}&key={google_api_key}")
+            return photo_url
         except KeyError:
             return None
-    # fetch multiple photo ref at once to speed up performance
+        
+    # fetch multiple photo_url at once to speed up performance
     with ThreadPoolExecutor() as executor:
         place_photos = list(executor.map(fetch_photos, place_ids))
+
     # zip the results into a tuple and append photo ref to serialized data
     for data, photos in zip(serialized_data, place_photos):
-        data['place_photo_reference'] = photos
+        data['photo_url'] = photos
     return (serialized_data)
-
 
 
 # get place details
@@ -65,14 +70,14 @@ def enrich_place_detail(api_key, place_id, add_reviews=False):
                   'serves_lunch', 'serves_vegetarian_food', 'takeout']:
         place_offers[offer] = place_data.get(offer, False)
     # get maximum of 5 photo references
-    place_photo_reference = get_place_photos_reference(api_key=api_key, place_id=place_id, max_photos=5)
+    photo_url = get_place_photos_reference(api_key=api_key, place_id=place_id, max_photos=5)
     # return the cleaned data as an obj
     formatted_data = {
         "opening_times": place_data['opening_hours']['weekday_text'],
         "open_now": place_data['opening_hours']['open_now'],
         "phone_number": place_data['formatted_phone_number'],
         "place_offers": place_offers,
-        "photo_references": place_photo_reference
+        "photo_urls": photo_url
     }
     return formatted_data
 
