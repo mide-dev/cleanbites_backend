@@ -68,18 +68,20 @@ class PlaceSearchView(APIView):
         queryset = PlaceDetail.objects.annotate(search=vector).filter(search=query)
 
         if len(queryset) < 1:
-            queryset = PlaceDetail.objects.annotate(similarity=TrigramSimilarity("business_name", queryString)).filter(similarity__gt=0.3).order_by("-similarity")
+            queryset = PlaceDetail.objects.annotate(similarity=TrigramSimilarity("business_name", queryString)).filter(similarity__gt=0.4).order_by("-similarity")
 
         if len(queryset) < 1:
-            queryset = PlaceDetail.objects.annotate(similarity=TrigramSimilarity("category_desc", queryString)).filter(similarity__gt=0.3).order_by("-similarity")
+            queryset = PlaceDetail.objects.annotate(similarity=TrigramSimilarity("category_desc", queryString)).filter(similarity__gt=0.4).order_by("-similarity")
 
         paginator = self.pagination_class()
         page = paginator.paginate_queryset(queryset, request)
         serializer = PlacesSerializer(page, many=True)
+        serialized_data = serializer.data
 
         if len(serializer.data) < 1:
             return Response({'message': "No results available for the search string"}, status=status.HTTP_404_NOT_FOUND)
-        return paginator.get_paginated_response(serializer.data)
+        result = get_photo_url(serialized_data=serialized_data, google_api_key=google_api_key)
+        return paginator.get_paginated_response(result)
 
 
 class PlaceAutocompleteView(APIView):
