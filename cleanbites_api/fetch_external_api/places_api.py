@@ -1,56 +1,63 @@
 import googlemaps
 from rest_framework.response import Response
 from concurrent.futures import ThreadPoolExecutor
-
+from functools import partial
 # define func to get photo reference
 def get_place_photos_reference(api_key, place_id, max_photos=5):
-    # set api key
+    # Initialize Google Maps client
     gmaps = googlemaps.Client(key=api_key)
-    # parameter(s) to fetch from google api
+
+    # Parameters to fetch from Google API
     required_fields = ['photo']
-    # call the api
-    get_photo_reference = gmaps.place(place_id=place_id, fields=required_fields)
-    # define list to append fetch results
-    place_photo_reference = []
-    # loop through result and append to photo_reference list
-    for idx, img in enumerate(get_photo_reference['result']['photos']):
-        if idx >= max_photos:
-            break
-        place_photo_reference.append(img["photo_reference"])
-    
-    return place_photo_reference
 
-# 
-def get_photo_url(serialized_data, google_api_key, maxwidth = 600):
-    # fetch photo reference of each place from google
-    # and add to json payload
-    # '''
-    # # extract place_ids of fetched places and store in list
-    place_ids = [data['google_place_id'] for data in serialized_data]
-    def fetch_photos(place_id):
-        # constant
-        base_url = "https://maps.googleapis.com/maps/api/place/photo"
-        try:
-            img_ref = get_place_photos_reference(google_api_key, place_id, max_photos=2)
-            photo_url = []
-            for img in img_ref:
-                photo_url.append(f"{base_url}?maxwidth={maxwidth}&photoreference={img}&key={google_api_key}")
-            return photo_url
-        except KeyError:
-            return None
+    try:
+        # Call the Google Maps API
+        response = gmaps.place(place_id=place_id, fields=required_fields)
+        photos = response.get('result', {}).get('photos', [])
         
-    # fetch multiple photo_url at once to speed up performance
-    with ThreadPoolExecutor() as executor:
-        place_photos = list(executor.map(fetch_photos, place_ids))
+        # Return photo references
+        return [photo["photo_reference"] for photo in photos[:max_photos]]
+    except Exception as e:
+        return None
 
-    # zip the results into a tuple and append photo ref to serialized data
+
+
+def construct_photo_url(place_id, google_api_key, maxwidth=600, max_photos=2):
+    base_url = "https://maps.googleapis.com/maps/api/place/photo"
+    img_refs = get_place_photos_reference(google_api_key, place_id, max_photos)
+
+    # Handle case where no image references were found
+    if img_refs is None:
+        return None
+
+    # Construct photo URLs
+    return [f"{base_url}?maxwidth={maxwidth}&photoreference={img}&key={google_api_key}" for img in img_refs]
+
+    
+# 
+def get_photo_url(serialized_data, google_api_key, maxwidth=600):
+    # Extract place_ids and prepare arguments for threading
+    place_ids = [data['google_place_id'] for data in serialized_data]
+    args = ((place_id, google_api_key, maxwidth) for place_id in place_ids)
+
+    partial_construct_photo_url = partial(construct_photo_url, google_api_key=google_api_key, maxwidth=maxwidth)
+    # Fetch photo URLs in parallel
+    with ThreadPoolExecutor() as executor:
+        # place_photos = list(executor.map(lambda place_arguments: construct_photo_url(*place_arguments), args))
+        place_photos = list(executor.map(partial_construct_photo_url, place_ids))
+
+    # Append photo URLs to the serialized data
     for data, photos in zip(serialized_data, place_photos):
-        data['photo_url'] = photos
-    return (serialized_data)
+        if photos is not None:
+            data['photo_url'] = photos
+        else:
+            continue
+
+    return serialized_data
 
 
 # get place details
-def enrich_place_detail(api_key, place_id, add_reviews=False):
+def enrich_place_detail(api_key, place_id):
     # set api key
     gmaps = googlemaps.Client(key=api_key)
     # parameter(s) to fetch from google api 
@@ -60,22 +67,30 @@ def enrich_place_detail(api_key, place_id, add_reviews=False):
                        'serves_lunch', 'serves_vegetarian_food', 'takeout']
     # call the api
     get_places_data = gmaps.place(place_id=place_id, fields=required_fields)
+
     # save api results
     place_data = get_places_data['result']
+
     # extract place offers and format properly
-    place_offers = {}
-    for offer in ['wheelchair_accessible_entrance', 'delivery', 
-                  'dine_in', 'price_level', 'reservable', 'serves_beer',
-                  'serves_breakfast', 'serves_brunch', 'serves_dinner',
-                  'serves_lunch', 'serves_vegetarian_food', 'takeout']:
-        place_offers[offer] = place_data.get(offer, False)
+    place_offers = {offer: place_data.get(offer, False) for offer in required_fields}
+
+    # Handling the extraction of opening_hours to manage when it's missing
+    opening_hours = place_data.get('opening_hours', {})
+    opening_times = opening_hours.get('weekday_text', [])
+    open_now = opening_hours.get('open_now', 'Not Available')
+
+    # Handling formatted_phone_number with a default empty string
+    phone_number = place_data.get('formatted_phone_number', 'Not Available')
+
     # get maximum of 5 photo references
-    photo_url = get_place_photos_reference(api_key=api_key, place_id=place_id, max_photos=5)
+    photo_url = construct_photo_url(place_id=place_id, google_api_key=api_key, maxwidth=1300, max_photos=5)
+    photo_url = photo_url if photo_url is not None else []
+
     # return the cleaned data as an obj
     formatted_data = {
-        "opening_times": place_data['opening_hours']['weekday_text'],
-        "open_now": place_data['opening_hours']['open_now'],
-        "phone_number": place_data['formatted_phone_number'],
+        "opening_times": opening_times,
+        "open_now": open_now,
+        "phone_number": phone_number,
         "place_offers": place_offers,
         "photo_urls": photo_url
     }
