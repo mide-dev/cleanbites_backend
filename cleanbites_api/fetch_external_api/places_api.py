@@ -38,12 +38,12 @@ def construct_photo_url(place_id, google_api_key, maxwidth=600, max_photos=2):
 def get_photo_url(serialized_data, google_api_key, maxwidth=600):
     # Extract place_ids and prepare arguments for threading
     place_ids = [data['google_place_id'] for data in serialized_data]
-    args = ((place_id, google_api_key, maxwidth) for place_id in place_ids)
+    # args = ((place_id, google_api_key, maxwidth) for place_id in place_ids)
 
+    # create a partially applied version of construct_photo_url
     partial_construct_photo_url = partial(construct_photo_url, google_api_key=google_api_key, maxwidth=maxwidth)
     # Fetch photo URLs in parallel
     with ThreadPoolExecutor() as executor:
-        # place_photos = list(executor.map(lambda place_arguments: construct_photo_url(*place_arguments), args))
         place_photos = list(executor.map(partial_construct_photo_url, place_ids))
 
     # Append photo URLs to the serialized data
@@ -54,6 +54,8 @@ def get_photo_url(serialized_data, google_api_key, maxwidth=600):
             continue
 
     return serialized_data
+
+
 
 
 # get place details

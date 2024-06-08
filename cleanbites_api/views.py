@@ -89,12 +89,11 @@ class PlaceAutocompleteView(APIView):
 
         search_string = request.GET.get('query')
         
-        categoryQueryset = Category.objects.annotate(similarity=TrigramSimilarity("name", search_string)).filter(similarity__gt=0.2).order_by("-similarity")[:5]
-        PlaceQueryset = PlaceDetail.objects.annotate(similarity=TrigramSimilarity("business_name", search_string)).filter(similarity__gt=0.1).order_by("-similarity")[:5]
+        categoryQueryset = Category.objects.annotate(similarity=TrigramSimilarity("name", search_string)).filter(similarity__gt=0.15).order_by("-similarity")[:5]
+        PlaceQueryset = PlaceDetail.objects.annotate(similarity=TrigramSimilarity("business_name", search_string)).filter(similarity__gt=0.15).order_by("-similarity")[:5]
 
         categorySerializer = CategorySerializer(categoryQueryset, many=True)
         placeSerializer = PlacesSerializer(PlaceQueryset, many=True)
-
         serialized_data = {
             'categoriesAutocomplete': categorySerializer.data,
             'placeAutocomplete': placeSerializer.data,
