@@ -94,7 +94,8 @@ DATABASES = {
         # 'PORT': env("DB_PORT"),
     }
 }
-DATABASES['default'] = dj_database_url.parse('postgresql://cleanbites_postgres_user:CZdVYgMBemtkGeenHR9V3fkG2BzwlWlj@dpg-cq4268ks1f4s73fp3q60-a.frankfurt-postgres.render.com/cleanbites_postgres')
+db_url = env("DB_URL")
+DATABASES['default'] = dj_database_url.parse(db_url)
 
 # Password validation
 # https://docs.djangoproject.com/en/4.2/ref/settings/#auth-password-validators
