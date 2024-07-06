@@ -57,6 +57,7 @@ class PlacesView(APIView):
         
         return paginator.get_paginated_response(result)
 
+
 class PlaceSearchView(APIView):
     pagination_class = PageNumberPagination
 
@@ -71,7 +72,7 @@ class PlaceSearchView(APIView):
             queryset = PlaceDetail.objects.annotate(similarity=TrigramSimilarity("business_name", queryString)).filter(similarity__gt=0.4).order_by("-similarity")
 
         if len(queryset) < 1:
-            queryset = PlaceDetail.objects.annotate(similarity=TrigramSimilarity("category_desc", queryString)).filter(similarity__gt=0.4).order_by("-similarity")
+            queryset = PlaceDetail.objects.annotate(similarity=TrigramSimilarity("category_desc", queryString)).filter(similarity__gt=0.1).order_by("-similarity")
 
         paginator = self.pagination_class()
         page = paginator.paginate_queryset(queryset, request)
@@ -113,17 +114,23 @@ class PlaceDetailView(APIView):
         return Response(serialized_data)
     
 
+class CustomPageNumberPagination(PageNumberPagination):
+    page_size = 5
+
 class TopPlacesView(APIView):
-    pagination_class = PageNumberPagination
+    pagination_class = CustomPageNumberPagination
 
     def get(self, request):
         # apply filter
-        queryset = PlaceDetail.objects.filter(hygiene_score__gt=4).filter(google_review_score__gt=4).filter(google_review_count__gt=100)
+        queryset = PlaceDetail.objects.filter(hygiene_score__gt=4).filter(google_review_score__gt=4).filter(google_review_count__gt=100).order_by('?')
         # paginate & Serialize the results
         paginator = self.pagination_class()
         page = paginator.paginate_queryset(queryset, request)
         serializer = PlacesSerializer(page, many=True)
-        return paginator.get_paginated_response(serializer.data)
+        serialized_data = serializer.data
+        result = get_photo_url(serialized_data=serialized_data, google_api_key=google_api_key)
+        
+        return paginator.get_paginated_response(result)
     
 
 # PLACE FAVORITES VIEWS
@@ -206,25 +213,80 @@ class CreateReviewView(APIView):
     def post(self, request):
         user = request.user
         place_id = request.data.get('place_id')
-        place = get_object_or_404(PlaceDetail, pk=place_id)
         review_text = request.data.get('review_text')
         rating = request.data.get('rating')
 
+        place = get_object_or_404(PlaceDetail, pk=place_id)
+        google_review_score = place.google_review_score
+        google_review_count = place.google_review_count
+
+        # New review count
+        new_review_count = google_review_count + 1
+
+        # Get new rating average
+        new_rating = ((google_review_count * google_review_score) + rating) / new_review_count
+        new_rating = round(new_rating, 2)
+
+        # Update place information
+        place.google_review_score = new_rating
+        place.google_review_count = new_review_count
+        place.save()
+
         review = PlaceReview.objects.create(user=user, place_id=place, review=review_text, rating=rating)
         serializer = PlaceReviewSerializer(review)
+
         return Response(serializer.data, status=status.HTTP_201_CREATED)
+    
+class VerifyIfUserAlreadyReviewed(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, user_id):
+        place_id = request.query_params.get('place_id')
+
+        if not place_id:
+            return Response({'error': 'Place ID is required'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            place = get_object_or_404(PlaceDetail, pk=place_id)
+        except ValueError:
+            return Response({'error': 'Invalid Place ID format'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Check if user has already left a review for the given place
+        review_exists = PlaceReview.objects.filter(user_id=user_id, place_id=place.id).exists()
+
+        if review_exists:
+            return Response({'review': 'User has already left a review.'}, status=status.HTTP_200_OK)
+        else:
+            return Response({'error': 'No review found.'}, status=status.HTTP_404_NOT_FOUND)
 
 class EditOrDeleteReviewView(APIView):
     permission_classes = [IsAuthenticated]
 
+    def get(self, request, review_id):
+        review = get_object_or_404(PlaceReview, pk=review_id)
+        serializer = PlaceReviewSerializer(review)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
     def put(self, request, review_id):
         review = get_object_or_404(PlaceReview, pk=review_id)
         if review.user == request.user:
+            place = review.place_id
+            old_rating = review.rating
+
             review_text = request.data.get('review_text')
             rating = request.data.get('rating')
+
             review.review = review_text
             review.rating = rating
             review.save()
+
+            # Fetch the place using the place_id to update the rating
+            place = get_object_or_404(PlaceDetail, pk=place.id)
+            total_ratings = place.google_review_score * place.google_review_count
+            total_ratings = total_ratings - old_rating + rating
+            place.google_review_score = round(total_ratings / place.google_review_count, 2)
+            place.save()
+
             serializer = PlaceReviewSerializer(review)
             return Response(serializer.data, status=status.HTTP_200_OK)
         else:
@@ -233,7 +295,24 @@ class EditOrDeleteReviewView(APIView):
     def delete(self, request, review_id):
         review = get_object_or_404(PlaceReview, pk=review_id)
         if review.user == request.user:
+            place = review.place_id
+            rating = review.rating
+
             review.delete()
+
+            # Fetch the place using the place_id to update the rating and review count
+            place = get_object_or_404(PlaceDetail, pk=place.id)
+            if place.google_review_count > 1:
+                place.google_review_count -= 1
+                total_ratings = place.google_review_score * (place.google_review_count + 1)
+                total_ratings = total_ratings - rating
+                place.google_review_score = round(total_ratings / place.google_review_count, 2)
+            else:
+                place.google_review_score = 0
+                place.google_review_count = 0
+
+            place.save()
+
             return Response({'message': 'Review deleted'}, status=status.HTTP_200_OK)
         else:
             return Response({'message': 'You are not allowed to delete this review'}, status=status.HTTP_403_FORBIDDEN)

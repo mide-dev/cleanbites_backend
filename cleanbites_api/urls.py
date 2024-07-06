@@ -31,6 +31,7 @@ urlpatterns = [
     
     # USER REVIEWS
     path('users/<int:user_id>/reviews/', views.UserReviewsListView.as_view()),
+    path('users/verifyreview/<int:user_id>/', views.VerifyIfUserAlreadyReviewed.as_view(), name='verify-review'),
     
     # CREATE AND EDIT REVIEWS
     path('reviews/add/', views.CreateReviewView.as_view()),

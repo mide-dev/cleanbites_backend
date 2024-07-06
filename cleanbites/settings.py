@@ -9,7 +9,7 @@ https://docs.djangoproject.com/en/4.2/topics/settings/
 For the full list of settings and their values, see
 https://docs.djangoproject.com/en/4.2/ref/settings/
 """
-
+import dj_database_url
 from pathlib import Path
 import environ
 from datetime import timedelta
@@ -87,14 +87,14 @@ WSGI_APPLICATION = 'cleanbites.wsgi.application'
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql_psycopg2',
-        'NAME': env("DB_NAME"),
-        'USER': env("DB_USER"),
-        'PASSWORD': env("DB_PASSWORD"),
-        'HOST': env("DB_HOST"),
-        'PORT': env("DB_PORT"),
+        # 'NAME': env("DB_NAME"),
+        # 'USER': env("DB_USER"),
+        # 'PASSWORD': env("DB_PASSWORD"),
+        # 'HOST': env("DB_HOST"),
+        # 'PORT': env("DB_PORT"),
     }
 }
-
+DATABASES['default'] = dj_database_url.parse('postgresql://cleanbites_postgres_user:CZdVYgMBemtkGeenHR9V3fkG2BzwlWlj@dpg-cq4268ks1f4s73fp3q60-a.frankfurt-postgres.render.com/cleanbites_postgres')
 
 # Password validation
 # https://docs.djangoproject.com/en/4.2/ref/settings/#auth-password-validators
@@ -133,7 +133,7 @@ REST_FRAMEWORK = {
         'rest_framework_simplejwt.authentication.JWTAuthentication',
     ),
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
-    'PAGE_SIZE': 4
+    'PAGE_SIZE': 8
 }
 
 SIMPLE_JWT = {
