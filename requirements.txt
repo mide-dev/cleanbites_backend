@@ -15,9 +15,11 @@ djoser==2.2.3
 environ==1.0
 future @ file:///AppleInternal/Library/BuildRoots/860631e9-c1c5-11ee-98ee-b6ef2fd8d87b/Library/Caches/com.apple.xbs/Sources/python3/future-0.18.2-py3-none-any.whl
 googlemaps==4.10.0
+gunicorn==22.0.0
 idna==3.7
 macholib @ file:///AppleInternal/Library/BuildRoots/860631e9-c1c5-11ee-98ee-b6ef2fd8d87b/Library/Caches/com.apple.xbs/Sources/python3/macholib-1.15.2-py2.py3-none-any.whl
 oauthlib==3.2.2
+packaging==24.1
 psycopg2-binary==2.9.9
 pycparser==2.22
 PyJWT==2.8.0
