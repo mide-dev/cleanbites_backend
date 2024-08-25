@@ -13,6 +13,7 @@ import dj_database_url
 from pathlib import Path
 import environ
 from datetime import timedelta
+import os
 # Initialise environment variables
 env = environ.Env()
 environ.Env.read_env()
@@ -32,7 +33,7 @@ SECRET_KEY = env("SECRET_KEY")
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = ['cleanbites-backend.onrender.com']
+ALLOWED_HOSTS = ['cleanbites-backend.onrender.com', '127.0.0.1']
 
 
 # Application definition
@@ -67,7 +68,7 @@ ROOT_URLCONF = 'cleanbites.urls'
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        'DIRS': [],
+        'DIRS': [os.path.join(BASE_DIR, 'templates')],
         'APP_DIRS': True,
         'OPTIONS': {
             'context_processors': [
