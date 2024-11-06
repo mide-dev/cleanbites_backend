@@ -1,3 +1,5 @@
+Webapp - [https://cleanbites.uk/](url)
+
 # Clean Bites - Food Places Recommendations Web Application
 
 ## Introduction
@@ -19,14 +21,6 @@ According to the UK Food Standards Agency (FSA), there are nearly 2.4 million ca
 
 Clean Bites is an ongoing project. Heres whats next:
 
-**Connecting Frontend to API**: Currently, the frontend and backend are being developed independently.
-
 **Maps**: enabling google maps display for a place search.
 
 **similar places Recommendation**: show users a list of place similar to what they're looking at.
-
-**Pagination**: Implementing pagination for restaurant listings to improve the experience.
-
-**Text Search**: Adding a text search feature to allow users to find restaurants based on specific keywords or criteria.
-
-**Place Details**: designing the place detail frontend.
